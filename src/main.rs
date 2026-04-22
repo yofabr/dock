@@ -1,27 +1,10 @@
 mod config;
 
 use clap::{Parser, Subcommand};
-use config::{generate_id, Archive, Config};
+use config::{Archive, Config};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use time::UtcDateTime;
-
-fn prompt_name(exists: impl Fn(&str) -> bool) -> Option<String> {
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).ok()?;
-    let input = input.trim().to_string();
-    match Archive::validate_name(&input) {
-        Ok(valid) if !exists(&valid) => Some(valid),
-        Ok(_) => {
-            eprintln!("Error: name already exists");
-            None
-        }
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            None
-        }
-    }
-}
 
 #[derive(Debug, Parser)]
 #[command(name = "dock")]
@@ -86,17 +69,23 @@ fn main() -> std::io::Result<()> {
                 None => {
                     print!("Archive name: ");
                     io::stdout().flush()?;
-                    match prompt_name(&exists) {
+                    match Archive::prompt_name(&exists) {
                         Some(name) => name,
                         None => return Ok(()),
                     }
                 }
             };
 
-            let archive_id = generate_id();
-            let target_path = config.archive_path.join(format!("{}_{}.tar.gz", archive_id, archive_name));
+            let archive_id = Archive::generate_id();
+            let target_path = config
+                .archive_path
+                .join(format!("{}_{}.tar.gz", archive_id, archive_name));
 
-            println!("Archiving '{}' to '{}'", source.display(), target_path.display());
+            println!(
+                "Archiving '{}' to '{}'",
+                source.display(),
+                target_path.display()
+            );
 
             config.archives.push(Archive {
                 id: archive_id,
@@ -110,7 +99,10 @@ fn main() -> std::io::Result<()> {
             config.save()?;
             println!("Successfully archived '{}'", path);
         }
-        Commands::Mount { archive: archive_arg, target_dir } => {
+        Commands::Mount {
+            archive: archive_arg,
+            target_dir,
+        } => {
             let found = config
                 .archives
                 .iter()
@@ -118,11 +110,12 @@ fn main() -> std::io::Result<()> {
 
             match found {
                 Some(archive) => {
+                    println!("Mounting archive '{}' to '{}'", archive.name, target_dir);
                     println!(
-                        "Mounting archive '{}' to '{}'",
-                        archive.name, target_dir
+                        "(stub) Would extract '{}' to '{}'",
+                        archive.path.display(),
+                        target_dir
                     );
-                    println!("(stub) Would extract '{}' to '{}'", archive.path.display(), target_dir);
                 }
                 None => {
                     eprintln!("Error: Archive '{}' not found", archive_arg);
@@ -130,15 +123,23 @@ fn main() -> std::io::Result<()> {
             }
         }
         Commands::List => {
-            println!("Archive storage location: {}\n", config.archive_path.display());
+            println!(
+                "Archive storage location: {}\n",
+                config.archive_path.display()
+            );
             println!("Archives ({}):", config.archives.len());
             for archive in &config.archives {
-                println!("  [{}] {} ({} bytes)", archive.id, archive.name, archive.size);
+                println!(
+                    "  [{}] {} ({} bytes)",
+                    archive.id, archive.name, archive.size
+                );
             }
         }
         Commands::Delete { archive } => {
             let initial_len = config.archives.len();
-            config.archives.retain(|a| a.id != *archive && a.name != *archive);
+            config
+                .archives
+                .retain(|a| a.id != *archive && a.name != *archive);
 
             if config.archives.len() < initial_len {
                 config.save()?;
