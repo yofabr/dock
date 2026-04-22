@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
-use std::{fs, io};
 use time::UtcDateTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,39 +38,10 @@ impl Archive {
         if trimmed.starts_with('.') {
             return Err("Archive name cannot start with '.'".to_string());
         }
-        if !trimmed
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-        {
-            return Err(
-                "Archive name can only contain letters, numbers, underscores, and hyphens"
-                    .to_string(),
-            );
+        if !trimmed.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-') {
+            return Err("Archive name can only contain letters, numbers, underscores, and hyphens".to_string());
         }
         Ok(trimmed.to_string())
-    }
-
-    pub fn generate_id() -> String {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        format!("{:x}", duration.as_nanos())
-    }
-
-    pub fn prompt_name(exists: impl Fn(&str) -> bool) -> Option<String> {
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).ok()?;
-        let input = input.trim().to_string();
-        match Archive::validate_name(&input) {
-            Ok(valid) if !exists(&valid) => Some(valid),
-            Ok(_) => {
-                eprintln!("Error: name already exists");
-                None
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                None
-            }
-        }
     }
 }
 
@@ -118,6 +89,7 @@ impl Config {
                 archive_path: Self::default_archive_path(),
                 archives: Vec::new(),
             });
+            fs::create_dir_all(&config.archive_path)?;
             Ok(config)
         } else {
             let config = Config {
@@ -131,12 +103,18 @@ impl Config {
 
     pub fn save(&self) -> std::io::Result<()> {
         let config_path = Self::default_config_path();
+        let archive_path = &self.archive_path;
 
-        if let Some(parent) = config_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        fs::create_dir_all(config_path.parent().unwrap_or(&config_path))?;
+        fs::create_dir_all(archive_path)?;
 
         let content = serde_json::to_string_pretty(self).unwrap();
         fs::write(config_path, content)
     }
+}
+
+pub fn generate_id() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+    format!("{:x}", duration.as_nanos())
 }
