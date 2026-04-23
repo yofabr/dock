@@ -9,14 +9,41 @@ use std::process;
 use time::UtcDateTime;
 
 const RESET: &str = "\x1b[0m";
-const ERROR: &str = "\x1b[1;38;5;196m";
-const SUCCESS: &str = "\x1b[1;38;5;46m";
-const WARNING: &str = "\x1b[1;38;5;226m";
-const INFO: &str = "\x1b[38;5;75m";
-const HEADER: &str = "\x1b[1;38;5;141m";
-const HIGHLIGHT: &str = "\x1b[38;5;117m";
-const DIM: &str = "\x1b[38;5;245m";
-const PROMPT: &str = "\x1b[1;38;5;81m";
+const RED: &str = "\x1b[31m";
+const GREEN: &str = "\x1b[32m";
+const YELLOW: &str = "\x1b[33m";
+const BLUE: &str = "\x1b[34m";
+const PURPLE: &str = "\x1b[35m";
+const CYAN: &str = "\x1b[36m";
+const GRAY: &str = "\x1b[90m";
+
+fn c(s: &str) -> String {
+    format!("{}{}{}", CYAN, s, RESET)
+}
+
+fn r(s: &str) -> String {
+    format!("{}{}{}", RED, s, RESET)
+}
+
+fn g(s: &str) -> String {
+    format!("{}{}{}", GREEN, s, RESET)
+}
+
+fn y(s: &str) -> String {
+    format!("{}{}{}", YELLOW, s, RESET)
+}
+
+fn b(s: &str) -> String {
+    format!("{}{}{}", BLUE, s, RESET)
+}
+
+fn p(s: &str) -> String {
+    format!("{}{}{}", PURPLE, s, RESET)
+}
+
+fn gr(s: &str) -> String {
+    format!("{}{}{}", GRAY, s, RESET)
+}
 
 fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
@@ -31,6 +58,15 @@ fn format_size(bytes: u64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+fn format_date(time: &UtcDateTime) -> String {
+    let year = time.year();
+    let month: u8 = time.month().into();
+    let day = time.day();
+    let hour = time.hour();
+    let minute = time.minute();
+    format!("{:04}-{:02}-{:02} {:02}:{:02}", year, month, day, hour, minute)
 }
 
 #[derive(Debug, Parser)]
@@ -54,7 +90,7 @@ fn main() {
     let exit_code = match run() {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("{}Error: {}{}", ERROR, e, RESET);
+            eprintln!("{}Error: {}{}", r("Error:"), e, RESET);
             1
         }
     };
@@ -89,7 +125,7 @@ fn run() -> std::io::Result<()> {
             let archive_name = match archive_name {
                 Some(name) => name,
                 None => {
-                    print!("{}Archive name: {}", PROMPT, RESET);
+                    print!("{}Archive name: {}", c("?"), RESET);
                     io::stdout().flush()?;
                     let mut input = String::new();
                     io::stdin().read_line(&mut input)?;
@@ -97,11 +133,11 @@ fn run() -> std::io::Result<()> {
                     match Archive::validate_name(&name) {
                         Ok(name) if !config.archives.iter().any(|a| a.name == name) => name,
                         Ok(_) => {
-                            eprintln!("{}Error: name already exists{}", ERROR, RESET);
+                            eprintln!("{}name already exists", r("Error:"));
                             return Ok(());
                         }
                         Err(e) => {
-                            eprintln!("{}Error: {}{}", ERROR, e, RESET);
+                            eprintln!("{}{}", r("Error:"), e);
                             return Ok(());
                         }
                     }
@@ -109,12 +145,12 @@ fn run() -> std::io::Result<()> {
             };
 
             if config.archives.iter().any(|a| a.name == archive_name) {
-                print!("{}Directory '{}' exists. Overwrite? [y/N]: {}", WARNING, archive_name, RESET);
+                print!("{} '{}' exists. Overwrite? [y/N]: {}", y("!"), archive_name, RESET);
                 io::stdout().flush()?;
                 let mut input = String::new();
                 io::stdin().read_line(&mut input)?;
                 if !input.trim().to_lowercase().starts_with('y') {
-                    println!("{}Aborted.{}", DIM, RESET);
+                    println!("{}Aborted.", gr(">"));
                     return Ok(());
                 }
             }
@@ -124,14 +160,14 @@ fn run() -> std::io::Result<()> {
                 .archive_path
                 .join(format!("{}_{}.tar.gz", archive_id, archive_name));
 
-            println!("{}Archiving '{}'...{}", INFO, source.display(), RESET);
+            println!("{} Archiving '{}'...", c(">>"), source.display());
 
-            print!("{}  Compressing... {}", PROMPT, RESET);
+            print!("{} Compressing... ", c(".."));
             io::stdout().flush()?;
 
             let size = archiver::create_tar_gz(&source, &target_path)?;
 
-            println!("{}Done!{}", SUCCESS, RESET);
+            println!("{}", g("OK"));
 
             config.archives.retain(|a| a.name != archive_name);
             config.archives.push(Archive {
@@ -144,7 +180,7 @@ fn run() -> std::io::Result<()> {
             });
 
             config.save()?;
-            println!("{}Archived '{}' ({}){}", SUCCESS, archive_name, format_size(size), RESET);
+            println!("{} '{}' archived ({})", g("+"), archive_name, format_size(size));
         }
         Commands::Mount { archive: archive_arg, target_dir } => {
             let found = config
@@ -158,26 +194,26 @@ fn run() -> std::io::Result<()> {
                     let project_target = base_target.join(&archive.name);
 
                     if project_target.exists() {
-                        print!("{}Directory '{}' exists. Overwrite? [y/N]: {}", WARNING, project_target.display(), RESET);
+                        print!("{} '{}' exists. Overwrite? [y/N]: {}", y("!"), project_target.display(), RESET);
                         io::stdout().flush()?;
                         let mut input = String::new();
                         io::stdin().read_line(&mut input)?;
                         if !input.trim().to_lowercase().starts_with('y') {
-                            println!("{}Aborted.{}", DIM, RESET);
+                            println!("{}Aborted.", gr(">"));
                             return Ok(());
                         }
                         std::fs::remove_dir_all(&project_target)?;
                     }
 
-                    println!("{}Extracting {}...{}", INFO, archive.name, RESET);
+                    println!("{} Extracting {}...", c(">>"), archive.name);
 
-                    print!("{}  Extracting... {}", PROMPT, RESET);
+                    print!("{} Extracting... ", c(".."));
                     io::stdout().flush()?;
 
                     archiver::extract_tar_gz(&archive.path, &project_target)?;
 
-                    println!("{}Done!{}", SUCCESS, RESET);
-                    println!("{}Mounted at: {}{}", SUCCESS, project_target.display(), RESET);
+                    println!("{}", g("OK"));
+                    println!("{} Mounted at: {}", g("+"), project_target.display());
                 }
                 None => {
                     return Err(std::io::Error::new(
@@ -188,19 +224,24 @@ fn run() -> std::io::Result<()> {
             }
         }
         Commands::List => {
-            println!("{}Archive storage: {}{}", INFO, config.archive_path.display(), RESET);
-            println!("{}Archives ({}){}:", HEADER, config.archives.len(), RESET);
+            println!("{}Archive storage:", b("::"));
+            println!("  {}", config.archive_path.display());
+            println!();
 
             if config.archives.is_empty() {
-                println!("  {}No archives yet.{}", DIM, RESET);
+                println!("{}No archives yet.", gr("::"));
             } else {
-                println!();
+                println!("{}ARCHIVE           SIZE           CREATED", p("::"));
+                println!("{}", gr("------------------------------------------------"));
                 for archive in &config.archives {
-                    println!(
-                        "  {} {:30} {}({})",
-                        HIGHLIGHT, archive.name, INFO, archive.id
-                    );
+                    let name = format!("{:<16}", archive.name);
+                    let size = format!("{:>12}", format_size(archive.size));
+                    let date = format_date(&archive.created_at);
+                    println!("{}{} {}", p(&name), b(&size), gr(&date));
                 }
+                println!();
+                let total_size: u64 = config.archives.iter().map(|a| a.size).sum();
+                println!("{}Total: {} archives ({})", b("::"), config.archives.len(), format_size(total_size));
             }
         }
         Commands::Delete { archive } => {
@@ -210,7 +251,7 @@ fn run() -> std::io::Result<()> {
                     std::fs::remove_file(&deleted.path)?;
                 }
                 config.save()?;
-                println!("{}Deleted '{}' ({}){}", SUCCESS, deleted.name, format_size(deleted.size), RESET);
+                println!("{} Deleted '{}' ({})", g("-"), deleted.name, format_size(deleted.size));
             } else {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -219,9 +260,9 @@ fn run() -> std::io::Result<()> {
             }
         }
         Commands::Config => {
-            println!("{}Current configuration:{}", HEADER, RESET);
-            println!("  {}Archive storage: {}{}", INFO, config.archive_path.display(), RESET);
-            println!("  {}Archives count: {}{}", INFO, config.archives.len(), RESET);
+            println!("{}Configuration:", p("::"));
+            println!("  {}Archive storage: {}", b("::"), config.archive_path.display());
+            println!("  {}Archives: {}", b("::"), config.archives.len());
         }
     }
 
