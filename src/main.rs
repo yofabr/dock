@@ -190,22 +190,25 @@ fn run() -> std::io::Result<()> {
 
             match found {
                 Some(archive) => {
-                    let base_target = PathBuf::from(target_dir);
-                    let project_target = base_target.join(&archive.name);
+                    let mut base_target = PathBuf::from(target_dir);
+                    let mut folder_name = archive.name.clone();
 
-                    if project_target.exists() {
-                        print!("{} '{}' exists. Overwrite? [y/N]: {}", y("!"), project_target.display(), RESET);
+                    while base_target.join(&folder_name).exists() {
+                        print!("{}Folder '{}' already exists. Enter new name: {}", y("!"), folder_name, RESET);
                         io::stdout().flush()?;
                         let mut input = String::new();
                         io::stdin().read_line(&mut input)?;
-                        if !input.trim().to_lowercase().starts_with('y') {
+                        let new_name = input.trim().to_string();
+                        if new_name.is_empty() {
                             println!("{}Aborted.", gr(">"));
                             return Ok(());
                         }
-                        std::fs::remove_dir_all(&project_target)?;
+                        folder_name = new_name;
                     }
 
-                    println!("{} Extracting {}...", c(">>"), archive.name);
+                    let project_target = base_target.join(&folder_name);
+
+                    println!("{} Extracting {}...", c(">>"), folder_name);
 
                     print!("{} Extracting... ", c(".."));
                     io::stdout().flush()?;
