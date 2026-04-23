@@ -8,6 +8,31 @@ use std::path::PathBuf;
 use std::process;
 use time::UtcDateTime;
 
+const RESET: &str = "\x1b[0m";
+const ERROR: &str = "\x1b[1;38;5;196m";
+const SUCCESS: &str = "\x1b[1;38;5;46m";
+const WARNING: &str = "\x1b[1;38;5;226m";
+const INFO: &str = "\x1b[38;5;75m";
+const HEADER: &str = "\x1b[1;38;5;141m";
+const HIGHLIGHT: &str = "\x1b[38;5;117m";
+const DIM: &str = "\x1b[38;5;245m";
+const PROMPT: &str = "\x1b[1;38;5;81m";
+
+fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 #[derive(Debug, Parser)]
 #[command(name = "dock")]
 #[command(about = "dock: archive and mount your projects easily", long_about = None)]
@@ -18,26 +43,10 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Commands {
-    /// Archive a project directory to the archive store
-    Archive {
-        /// Path to the project directory
-        path: String,
-    },
-    /// Mount an archived project to a target directory
-    Mount {
-        /// Name or ID of the archive
-        archive: String,
-        /// Directory where to mount/extract the project
-        target_dir: String,
-    },
-    /// List all available archives
+    Archive { path: String },
+    Mount { archive: String, target_dir: String },
     List,
-    /// Delete an archive
-    Delete {
-        /// Name or ID of the archive to delete
-        archive: String,
-    },
-    /// Configure or show archive storage location
+    Delete { archive: String },
     Config,
 }
 
@@ -45,7 +54,7 @@ fn main() {
     let exit_code = match run() {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("{}Error: {}{}", ERROR, e, RESET);
             1
         }
     };
@@ -80,7 +89,7 @@ fn run() -> std::io::Result<()> {
             let archive_name = match archive_name {
                 Some(name) => name,
                 None => {
-                    print!("Archive name: ");
+                    print!("{}Archive name: {}", PROMPT, RESET);
                     io::stdout().flush()?;
                     let mut input = String::new();
                     io::stdin().read_line(&mut input)?;
@@ -88,11 +97,11 @@ fn run() -> std::io::Result<()> {
                     match Archive::validate_name(&name) {
                         Ok(name) if !config.archives.iter().any(|a| a.name == name) => name,
                         Ok(_) => {
-                            eprintln!("Error: name already exists");
+                            eprintln!("{}Error: name already exists{}", ERROR, RESET);
                             return Ok(());
                         }
                         Err(e) => {
-                            eprintln!("Error: {}", e);
+                            eprintln!("{}Error: {}{}", ERROR, e, RESET);
                             return Ok(());
                         }
                     }
@@ -100,12 +109,12 @@ fn run() -> std::io::Result<()> {
             };
 
             if config.archives.iter().any(|a| a.name == archive_name) {
-                print!("Archive '{}' already exists. Overwrite? [y/N]: ", archive_name);
+                print!("{}Directory '{}' exists. Overwrite? [y/N]: {}", WARNING, archive_name, RESET);
                 io::stdout().flush()?;
                 let mut input = String::new();
                 io::stdin().read_line(&mut input)?;
                 if !input.trim().to_lowercase().starts_with('y') {
-                    println!("Aborted.");
+                    println!("{}Aborted.{}", DIM, RESET);
                     return Ok(());
                 }
             }
@@ -115,13 +124,14 @@ fn run() -> std::io::Result<()> {
                 .archive_path
                 .join(format!("{}_{}.tar.gz", archive_id, archive_name));
 
-            println!(
-                "Archiving '{}' to '{}'",
-                source.display(),
-                target_path.display()
-            );
+            println!("{}Archiving '{}'...{}", INFO, source.display(), RESET);
+
+            print!("{}  Compressing... {}", PROMPT, RESET);
+            io::stdout().flush()?;
 
             let size = archiver::create_tar_gz(&source, &target_path)?;
+
+            println!("{}Done!{}", SUCCESS, RESET);
 
             config.archives.retain(|a| a.name != archive_name);
             config.archives.push(Archive {
@@ -134,12 +144,9 @@ fn run() -> std::io::Result<()> {
             });
 
             config.save()?;
-            println!("Successfully archived '{}'", path);
+            println!("{}Archived '{}' ({}){}", SUCCESS, archive_name, format_size(size), RESET);
         }
-        Commands::Mount {
-            archive: archive_arg,
-            target_dir,
-        } => {
+        Commands::Mount { archive: archive_arg, target_dir } => {
             let found = config
                 .archives
                 .iter()
@@ -151,20 +158,26 @@ fn run() -> std::io::Result<()> {
                     let project_target = base_target.join(&archive.name);
 
                     if project_target.exists() {
-                        print!("Directory '{}' exists. Overwrite? [y/N]: ", project_target.display());
+                        print!("{}Directory '{}' exists. Overwrite? [y/N]: {}", WARNING, project_target.display(), RESET);
                         io::stdout().flush()?;
                         let mut input = String::new();
                         io::stdin().read_line(&mut input)?;
                         if !input.trim().to_lowercase().starts_with('y') {
-                            println!("Aborted.");
+                            println!("{}Aborted.{}", DIM, RESET);
                             return Ok(());
                         }
                         std::fs::remove_dir_all(&project_target)?;
                     }
 
-                    println!("Extracting {} ({} bytes)...", archive.name, archive.size);
+                    println!("{}Extracting {}...{}", INFO, archive.name, RESET);
+
+                    print!("{}  Extracting... {}", PROMPT, RESET);
+                    io::stdout().flush()?;
+
                     archiver::extract_tar_gz(&archive.path, &project_target)?;
-                    println!("Done. Mounted at: {}", project_target.display());
+
+                    println!("{}Done!{}", SUCCESS, RESET);
+                    println!("{}Mounted at: {}{}", SUCCESS, project_target.display(), RESET);
                 }
                 None => {
                     return Err(std::io::Error::new(
@@ -175,17 +188,19 @@ fn run() -> std::io::Result<()> {
             }
         }
         Commands::List => {
-            println!(
-                "Archive storage: {}",
-                config.archive_path.display()
-            );
-            println!("Archives ({}):\n", config.archives.len());
-            for archive in &config.archives {
-                println!(
-                    "  {:15}  {:>8} bytes",
-                    archive.name,
-                    archive.size
-                );
+            println!("{}Archive storage: {}{}", INFO, config.archive_path.display(), RESET);
+            println!("{}Archives ({}){}:", HEADER, config.archives.len(), RESET);
+
+            if config.archives.is_empty() {
+                println!("  {}No archives yet.{}", DIM, RESET);
+            } else {
+                println!();
+                for archive in &config.archives {
+                    println!(
+                        "  {} {:30} {}({})",
+                        HIGHLIGHT, archive.name, INFO, archive.id
+                    );
+                }
             }
         }
         Commands::Delete { archive } => {
@@ -195,7 +210,7 @@ fn run() -> std::io::Result<()> {
                     std::fs::remove_file(&deleted.path)?;
                 }
                 config.save()?;
-                println!("Deleted archive '{}' ({} bytes)", deleted.name, deleted.size);
+                println!("{}Deleted '{}' ({}){}", SUCCESS, deleted.name, format_size(deleted.size), RESET);
             } else {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
@@ -204,9 +219,9 @@ fn run() -> std::io::Result<()> {
             }
         }
         Commands::Config => {
-            println!("Current configuration:");
-            println!("  Archive storage: {}", config.archive_path.display());
-            println!("  Archives count: {}", config.archives.len());
+            println!("{}Current configuration:{}", HEADER, RESET);
+            println!("  {}Archive storage: {}{}", INFO, config.archive_path.display(), RESET);
+            println!("  {}Archives count: {}{}", INFO, config.archives.len(), RESET);
         }
     }
 
