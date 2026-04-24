@@ -190,7 +190,7 @@ fn run() -> std::io::Result<()> {
 
             match found {
                 Some(archive) => {
-                    let mut base_target = PathBuf::from(target_dir);
+                    let base_target = PathBuf::from(target_dir);
                     let mut folder_name = archive.name.clone();
 
                     while base_target.join(&folder_name).exists() {
