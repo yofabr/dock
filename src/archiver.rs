@@ -4,7 +4,7 @@ use std::fs::{self, File};
 use std::io;
 use std::path::Path;
 
-pub fn create_tar_gz(source: &Path, archive: &Path) -> io::Result<u64> {
+pub fn create_tar_gz(source: &Path, archive: &Path) -> io::Result<(u64, usize)> {
     let file = File::create(archive)?;
     let enc = GzEncoder::new(file, Compression::default());
     let mut tar = tar::Builder::new(enc);
@@ -13,6 +13,13 @@ pub fn create_tar_gz(source: &Path, archive: &Path) -> io::Result<u64> {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("archive");
+
+    let count = if source.is_dir() {
+        // +1 for the root directory entry itself
+        count_entries(source)? + 1
+    } else {
+        1
+    };
 
     if source.is_dir() {
         tar.append_dir_all(name, source)?;
@@ -23,7 +30,22 @@ pub fn create_tar_gz(source: &Path, archive: &Path) -> io::Result<u64> {
     tar.finish()?;
     let enc = tar.into_inner()?;
     enc.finish()?;
-    fs::metadata(archive).map(|m| m.len())
+    let size = fs::metadata(archive).map(|m| m.len()).unwrap_or(0);
+    Ok((size, count))
+}
+
+fn count_entries(path: &Path) -> io::Result<usize> {
+    let mut count = 0;
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            count += 1;
+            if entry.path().is_dir() {
+                count += count_entries(&entry.path())?;
+            }
+        }
+    }
+    Ok(count)
 }
 
 pub fn extract_tar_gz(archive: &Path, target: &Path) -> io::Result<()> {
@@ -43,7 +65,7 @@ pub fn extract_tar_gz(archive: &Path, target: &Path) -> io::Result<()> {
 
         if entry_type.is_dir() {
             let stripped: std::path::PathBuf = path.components().skip(1).collect();
-            fs::create_dir_all(&target.join(&stripped))?;
+            fs::create_dir_all(target.join(&stripped))?;
         } else {
             let stripped: std::path::PathBuf = path.components().skip(1).collect();
             let file_path = target.join(&stripped);

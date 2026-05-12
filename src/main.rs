@@ -165,7 +165,7 @@ fn run() -> std::io::Result<()> {
             print!("{} Compressing... ", c(".."));
             io::stdout().flush()?;
 
-            let size = archiver::create_tar_gz(&source, &target_path)?;
+            let (size, items_count) = archiver::create_tar_gz(&source, &target_path)?;
 
             println!("{}", g("OK"));
 
@@ -176,7 +176,7 @@ fn run() -> std::io::Result<()> {
                 path: target_path,
                 created_at: UtcDateTime::now(),
                 size,
-                items_count: 0,
+                items_count,
             });
 
             config.save()?;
