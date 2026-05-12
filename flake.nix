@@ -1,5 +1,5 @@
 {
-  description = "pkll - A CLI tool to find and kill processes on a specific port";
+  description = "dock - Archive and mount your projects easily";
 
   nixConfig = {
     experimental-features = ["nix-command" "flakes"];
